@@ -1,3 +1,4 @@
+```mermaid
 erDiagram
     users {
         int user_id PK "用户ID"
@@ -39,7 +40,7 @@ erDiagram
         date divorce_date "离婚日期"
     }
 
-    %% 关系连线
+    %% 实体关系连线
     users ||--o{ families : "创建 (1:N)"
     users ||--o{ members : "录入 (1:N)"
     families ||--o{ members : "包含 (1:N)"
