@@ -1,5 +1,9 @@
 ```mermaid
 erDiagram
+    %% 设置横向排列布局
+    graph LR
+
+    %% 实体定义
     users {
         int user_id PK "用户ID"
         varchar username "用户名"
@@ -40,7 +44,7 @@ erDiagram
         date divorce_date "离婚日期"
     }
 
-    %% 实体关系连线
+    %% 实体关系连线 (左到右流向)
     users ||--o{ families : "创建 (1:N)"
     users ||--o{ members : "录入 (1:N)"
     families ||--o{ members : "包含 (1:N)"
