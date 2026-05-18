@@ -1,54 +1,42 @@
 ```mermaid
 erDiagram
-    %% 设置横向排列布局
-    graph LR
+    %% 先声明关系，利用层级引导渲染引擎生成上下紧凑结构
+    users ||--o{ families : "创建"
+    users ||--o{ members : "录入"
+    families ||--o{ members : "包含"
+    members ||--o{ family_relations : "父代与子代"
+    members ||--o{ marriages : "丈夫与妻子"
 
-    %% 实体定义
+    %% 后声明表结构
     users {
-        int user_id PK "用户ID"
-        varchar username "用户名"
-        varchar password_hash "密码哈希"
-        varchar email "邮箱"
-        timestamp created_at "创建时间"
+        int user_id PK
+        varchar username
+        varchar password_hash
+        varchar email
     }
     families {
-        int family_id PK "家族ID"
-        int user_id FK "创建者ID"
-        varchar family_name "家族名称"
-        text description "家族描述"
-        timestamp created_at "创建时间"
+        int family_id PK
+        int user_id FK
+        varchar family_name
+        text description
     }
     members {
-        int member_id PK "成员ID"
-        int family_id FK "所属家族ID"
-        varchar name "姓名"
-        char gender "性别"
-        date birth_date "出生日期"
-        date death_date "死亡日期"
-        int generation "世代"
-        text biography "传记/简介"
-        int created_by FK "录入用户ID"
-        timestamp created_at "创建时间"
+        int member_id PK
+        int family_id FK
+        varchar name
+        char gender
+        date birth_date
+        int generation
     }
     family_relations {
-        int relation_id PK "关系ID"
-        int parent_id FK "父代成员ID"
-        int child_id FK "子代成员ID"
-        varchar relation_type "关系类型(亲生/收养)"
+        int relation_id PK
+        int parent_id FK
+        int child_id FK
+        varchar relation_type
     }
     marriages {
-        int marriage_id PK "婚姻ID"
-        int husband_id FK "丈夫成员ID"
-        int wife_id FK "妻子成员ID"
-        date marriage_date "结婚日期"
-        date divorce_date "离婚日期"
+        int marriage_id PK
+        int husband_id FK
+        int wife_id FK
+        date marriage_date
     }
-
-    %% 实体关系连线 (左到右流向)
-    users ||--o{ families : "创建 (1:N)"
-    users ||--o{ members : "录入 (1:N)"
-    families ||--o{ members : "包含 (1:N)"
-    members ||--o{ family_relations : "作为父代 (1:N)"
-    members ||--o{ family_relations : "作为子代 (1:N)"
-    members ||--o{ marriages : "作为丈夫 (1:N)"
-    members ||--o{ marriages : "作为妻子 (1:N)"
