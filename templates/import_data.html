@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+{% block title %}批量导入数据 - 家族谱系管理系统{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h3><i class="bi bi-upload me-2"></i>批量导入数据</h3>
+    <a href="/api/families/{{ family_id }}/import/template?token=" id="template-link" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-download me-1"></i>下载模板
+    </a>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- Step 1: Upload -->
+<div class="chart-card mb-4">
+    <div class="chart-card-header">
+        <span><i class="bi bi-1-circle-fill me-2" style="color:var(--primary)"></i>上传 CSV 文件</span>
+    </div>
+    <div class="chart-card-body">
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label fw-bold">成员文件 <span style="color:var(--destructive)">*</span></label>
+                <input type="file" class="form-control" id="members-file" accept=".csv">
+                <small class="text-muted">必填。列: name, gender, birth_date, death_date, generation, biography, ref_id</small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">亲子关系文件</label>
+                <input type="file" class="form-control" id="relations-file" accept=".csv">
+                <small class="text-muted">可选。列: parent_ref_id, child_ref_id, relation_type</small>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">婚姻关系文件</label>
+                <input type="file" class="form-control" id="marriages-file" accept=".csv">
+                <small class="text-muted">可选。列: husband_ref_id, wife_ref_id, marriage_date, divorce_date</small>
+            </div>
+        </div>
+        <button class="btn btn-primary mt-3" id="preview-btn" onclick="previewImport()">
+            <i class="bi bi-eye me-1"></i>预览数据
+        </button>
+        <small class="text-muted ms-2">上传后点击预览，确认无误再执行导入</small>
+    </div>
+</div>
+
+<!-- Step 2: Preview -->
+<div id="preview-section" style="display:none;">
+    <div class="chart-card mb-4">
+        <div class="chart-card-header">
+            <span><i class="bi bi-2-circle-fill me-2" style="color:var(--primary)"></i>数据预览</span>
+            <span id="preview-badge" class="badge bg-success" style="display:none;">验证通过</span>
+            <span id="preview-badge-err" class="badge bg-danger" style="display:none;">验证失败</span>
+        </div>
+        <div class="chart-card-body">
+            <div id="preview-errors" class="mb-3" style="display:none;"></div>
+            <div id="preview-tables"></div>
+        </div>
+    </div>
+
+    <!-- Step 3: Confirm -->
+    <div class="chart-card">
+        <div class="chart-card-header">
+            <span><i class="bi bi-3-circle-fill me-2" style="color:var(--primary)"></i>执行导入</span>
+        </div>
+        <div class="chart-card-body">
+            <p class="text-muted">确认数据无误后点击导入。数据将写入家族 <strong id="family-name-display"></strong>。</p>
+            <button class="btn btn-primary btn-lg" id="import-btn" onclick="executeImport()">
+                <i class="bi bi-cloud-upload me-1"></i>开始导入
+            </button>
+            <div id="import-progress" style="display:none;" class="mt-3">
+                <div class="d-flex align-items-center gap-2">
+                    <div class="spinner-border spinner-border-sm" role="status"></div>
+                    <span>正在导入数据，请稍候...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Step 4: Result -->
+<div id="result-section" style="display:none;" class="chart-card"></div>
+
+<script>
+var familyId = {{ family_id }};
+var previewOk = false;
+
+// Set template download link with token
+document.getElementById('template-link').href += getToken();
+
+function formatDateShort(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function buildPreviewTable(title, data) {
+    if (!data || data.count === 0) return '<p class="text-muted">未上传' + title + '</p>';
+    var cols = data.columns;
+    var preview = data.preview || [];
+    var html = '<h6 class="fw-bold">' + title + ' (共 ' + data.count + ' 条)</h6>';
+    html += '<div class="table-responsive"><table class="table table-sm"><thead><tr>';
+    cols.forEach(function(c) { html += '<th>' + c + '</th>'; });
+    html += '</tr></thead><tbody>';
+    preview.forEach(function(row) {
+        html += '<tr>';
+        cols.forEach(function(c) { html += '<td>' + (row[c] || '') + '</td>'; });
+        html += '</tr>';
+    });
+    html += '</tbody></table></div>';
+    if (data.count > 5) {
+        html += '<p class="text-muted small">仅显示前 5 条，共 ' + data.count + ' 条</p>';
+    }
+    return html;
+}
+
+async function previewImport() {
+    var membersFile = document.getElementById('members-file').files[0];
+    if (!membersFile) {
+        showAlert('请先选择成员 CSV 文件', 'warning');
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('members_file', membersFile);
+
+    var relFile = document.getElementById('relations-file').files[0];
+    if (relFile) formData.append('relations_file', relFile);
+
+    var marFile = document.getElementById('marriages-file').files[0];
+    if (marFile) formData.append('marriages_file', marFile);
+
+    var btn = document.getElementById('preview-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>分析中...';
+
+    try {
+        var token = getToken();
+        var resp = await fetch('/api/families/' + familyId + '/import/preview', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+            body: formData
+        });
+
+        if (!resp.ok) {
+            var err = await resp.json();
+            showAlert(err.error || '预览失败', 'danger');
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-eye me-1"></i>预览数据';
+            return;
+        }
+
+        var result = await resp.json();
+
+        // Show preview section
+        document.getElementById('preview-section').style.display = 'block';
+
+        // Show errors
+        var errorsDiv = document.getElementById('preview-errors');
+        if (result.errors && result.errors.length > 0) {
+            errorsDiv.style.display = 'block';
+            errorsDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i><b>数据问题:</b><br>' +
+                result.errors.map(function(e) { return '&nbsp;&nbsp;' + e; }).join('<br>') + '</div>';
+            document.getElementById('preview-badge-err').style.display = 'inline';
+            document.getElementById('preview-badge').style.display = 'none';
+            previewOk = false;
+            document.getElementById('import-btn').disabled = true;
+        } else {
+            errorsDiv.style.display = 'none';
+            document.getElementById('preview-badge').style.display = 'inline';
+            document.getElementById('preview-badge-err').style.display = 'none';
+            previewOk = true;
+            document.getElementById('import-btn').disabled = false;
+        }
+
+        // Build preview tables
+        var tablesHtml = '';
+        tablesHtml += buildPreviewTable('成员数据', result.members);
+        if (result.relations) tablesHtml += '<hr>' + buildPreviewTable('亲子关系', result.relations);
+        if (result.marriages) tablesHtml += '<hr>' + buildPreviewTable('婚姻关系', result.marriages);
+        document.getElementById('preview-tables').innerHTML = tablesHtml;
+
+        // Show family name
+        document.getElementById('family-name-display').textContent = '#' + familyId;
+
+    } catch (e) {
+        showAlert('预览失败: ' + e.message, 'danger');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-eye me-1"></i>预览数据';
+}
+
+async function executeImport() {
+    if (!previewOk) {
+        showAlert('请先预览数据并确保验证通过', 'warning');
+        return;
+    }
+
+    var membersFile = document.getElementById('members-file').files[0];
+    var formData = new FormData();
+    formData.append('members_file', membersFile);
+
+    var relFile = document.getElementById('relations-file').files[0];
+    if (relFile) formData.append('relations_file', relFile);
+
+    var marFile = document.getElementById('marriages-file').files[0];
+    if (marFile) formData.append('marriages_file', marFile);
+
+    document.getElementById('import-btn').disabled = true;
+    document.getElementById('import-progress').style.display = 'block';
+    document.getElementById('result-section').style.display = 'none';
+
+    var t0 = performance.now();
+    try {
+        var token = getToken();
+        var resp = await fetch('/api/families/' + familyId + '/import/execute', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token },
+            body: formData
+        });
+
+        var t1 = performance.now();
+
+        if (!resp.ok) {
+            var err = await resp.json();
+            showAlert('导入失败: ' + (err.error || '未知错误'), 'danger');
+            if (err.details) {
+                document.getElementById('preview-errors').style.display = 'block';
+                document.getElementById('preview-errors').innerHTML = '<div class="alert alert-danger">' +
+                    err.details.map(function(d) { return d; }).join('<br>') + '</div>';
+            }
+            document.getElementById('import-progress').style.display = 'none';
+            document.getElementById('import-btn').disabled = false;
+            return;
+        }
+
+        var result = await resp.json();
+        document.getElementById('import-progress').style.display = 'none';
+
+        var clientElapsed = ((t1 - t0) / 1000).toFixed(2);
+
+        var resultHtml = '<div class="chart-card-header">' +
+            '<span><i class="bi bi-check-circle-fill me-2" style="color:var(--success)"></i>导入完成</span>' +
+            '</div>' +
+            '<div class="chart-card-body">' +
+            '<div class="row g-3">' +
+            '<div class="col-sm-3"><div class="text-center"><h2 class="text-success">' + result.members_inserted + '</h2><small>成员导入</small></div></div>' +
+            '<div class="col-sm-3"><div class="text-center"><h2>' + result.relations_inserted + '</h2><small>关系导入</small></div></div>' +
+            '<div class="col-sm-3"><div class="text-center"><h2>' + result.marriages_inserted + '</h2><small>婚姻导入</small></div></div>' +
+            '<div class="col-sm-3"><div class="text-center"><h2>' + result.elapsed_seconds + 's</h2><small>服务端耗时</small></div></div>' +
+            '</div>' +
+            '<div class="mt-3 text-muted small">服务端耗时: ' + result.elapsed_seconds + ' 秒 | 速度: ' + result.records_per_second + ' 条/秒 | 客户端总耗时: ' + clientElapsed + ' 秒</div>' +
+            '<div class="mt-3">' +
+            '<a href="/families/' + familyId + '/members" class="btn btn-primary"><i class="bi bi-people me-1"></i>查看成员列表</a>' +
+            '<a href="/families/' + familyId + '/tree" class="btn btn-outline-primary ms-2"><i class="bi bi-diagram-2 me-1"></i>查看族谱树</a>' +
+            '</div>' +
+            '</div>';
+
+        document.getElementById('result-section').innerHTML = resultHtml;
+        document.getElementById('result-section').style.display = 'block';
+
+        showAlert('成功导入 ' + result.members_inserted + ' 位成员', 'success');
+
+    } catch (e) {
+        showAlert('导入请求失败: ' + e.message, 'danger');
+        document.getElementById('import-progress').style.display = 'none';
+        document.getElementById('import-btn').disabled = false;
+    }
+}
+</script>
+{% endblock %}

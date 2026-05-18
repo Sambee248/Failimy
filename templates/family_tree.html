@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}家族树 - 家族谱系管理系统{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="/families/{{ family_id }}/members" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+    <h3 id="tree-title">家族树</h3>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- Controls -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="filter-bar">
+            <div style="min-width:200px;">
+                <label class="form-label">选择根成员</label>
+                <select class="form-select" id="root-member" onchange="loadTree()">
+                    <option value="">加载中...</option>
+                </select>
+            </div>
+            <div style="min-width:160px;">
+                <label class="form-label">方向</label>
+                <select class="form-select" id="tree-direction" onchange="loadTree()">
+                    <option value="descendants">后代（向下）</option>
+                    <option value="ancestors">祖先（向上）</option>
+                </select>
+            </div>
+            <div style="min-width:200px;">
+                <label class="form-label">展开深度: <span id="depth-label">5</span></label>
+                <input type="range" class="form-range" id="tree-depth" min="2" max="15" value="5" oninput="document.getElementById('depth-label').textContent=this.value; loadTree();">
+            </div>
+            <div>
+                <label class="form-label">&nbsp;</label>
+                <button class="btn btn-outline-primary" onclick="exportTree()">
+                    <i class="bi bi-download me-1"></i>导出图片
+                </button>
+            </div>
+            <div>
+                <label class="form-label">&nbsp;</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="show-all" onchange="loadTree()">
+                    <label for="show-all">显示全部成员</label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tree Chart -->
+<div class="chart-card">
+    <div class="chart-card-body">
+        <div id="tree-chart" style="height: 650px;"></div>
+    </div>
+</div>
+
+<script>
+const familyId = {{ family_id }};
+let treeChart;
+
+async function loadMembers() {
+    try {
+        const data = await apiGet(`/members/families/${familyId}?per_page=10000`);
+        const select = document.getElementById('root-member');
+        select.innerHTML = data.members.map(m =>
+            `<option value="${m.member_id}">${m.name} (第${m.generation}代)</option>`
+        ).join('');
+        if (data.members.length > 0) loadTree();
+    } catch (err) {
+        showAlert('加载成员列表失败: ' + err.message);
+    }
+}
+
+async function loadTree() {
+    const rootId = document.getElementById('root-member').value;
+    if (!rootId) return;
+
+    const direction = document.getElementById('tree-direction').value;
+    const depth = document.getElementById('show-all').checked ? 15 : parseInt(document.getElementById('tree-depth').value);
+
+    try {
+        if (!treeChart) {
+            treeChart = echarts.init(document.getElementById('tree-chart'));
+        }
+
+        const treeData = await apiGet(
+            `/members/${rootId}/tree?direction=${direction}&depth=${depth}`
+        );
+
+        treeChart.setOption({
+            tooltip: {
+                trigger: 'item',
+                formatter: function(p) {
+                    if (!p.data) return '';
+                    const d = p.data;
+                    return `<b>${d.name}</b><br/>性别: ${d.gender === 'M' ? '男' : '女'}<br/>世代: 第${d.generation || '?'}代<br/>出生: ${d.birth_date || '未知'}<br/>逝世: ${d.death_date || '在世'}`;
+                }
+            },
+            series: [{
+                type: 'tree',
+                data: [treeData],
+                top: '5%', left: '5%', bottom: '5%', right: '28%',
+                symbolSize: 10,
+                orient: 'LR',
+                roam: true,
+                initialTreeDepth: parseInt(depth),
+                itemStyle: {
+                    color: function(p) { return p.data.gender === 'M' ? '#5470c6' : '#fc8452'; },
+                    borderColor: '#fff',
+                    borderWidth: 2
+                },
+                lineStyle: { color: '#ccc', width: 1.5, curveness: 0.5 },
+                label: {
+                    position: 'right',
+                    verticalAlign: 'middle',
+                    align: 'left',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    distance: 10,
+                    color: '#1a1a1a',
+                    backgroundColor: '#f8f9fa',
+                    borderColor: '#e0e0e0',
+                    borderWidth: 1,
+                    borderRadius: 6,
+                    padding: [4, 10, 4, 10],
+                    shadowColor: 'rgba(0,0,0,0.05)',
+                    shadowBlur: 2,
+                    shadowOffsetY: 1
+                },
+                leaves: {
+                    label: {
+                        position: 'right',
+                        distance: 10,
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: '#1a1a1a',
+                        backgroundColor: '#f8f9fa',
+                        borderColor: '#e0e0e0',
+                        borderWidth: 1,
+                        borderRadius: 6,
+                        padding: [4, 10, 4, 10]
+                    }
+                },
+                expandAndCollapse: true,
+                animationDuration: 500,
+                animationDurationUpdate: 300
+            }]
+        });
+    } catch (err) {
+        showAlert('加载家族树失败: ' + err.message);
+    }
+}
+
+function exportTree() {
+    if (treeChart) {
+        const url = treeChart.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: '#fff' });
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'family_tree.png';
+        a.click();
+    }
+}
+
+async function loadFamilyName() {
+    try {
+        const f = await apiGet('/families/' + familyId);
+        document.getElementById('tree-title').textContent = f.family_name + ' - 家族树';
+        document.title = f.family_name + ' - 家族树';
+    } catch(e) {}
+}
+
+loadFamilyName();
+loadMembers();
+</script>
+{% endblock %}

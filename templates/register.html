@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}注册 - 家族谱系管理系统{% endblock %}
+{% block content_full %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-card-header">
+            <div class="auth-icon">
+                <i class="bi bi-person-plus-fill"></i>
+            </div>
+            <h2>创建账户</h2>
+            <p>注册以开始管理您的家族谱系</p>
+        </div>
+        <div class="auth-card-body">
+            <div id="alert-container"></div>
+            <form onsubmit="handleRegister(event)">
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input type="text" id="username" placeholder="输入用户名（至少2个字符）" required minlength="2">
+                </div>
+                <div class="form-group">
+                    <label for="email">邮箱（选填）</label>
+                    <input type="email" id="email" placeholder="you@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password" id="password" placeholder="输入密码（至少4个字符）" required minlength="4">
+                </div>
+                <div class="form-group">
+                    <label for="confirm-password">确认密码</label>
+                    <input type="password" id="confirm-password" placeholder="再次输入密码" required minlength="4">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block mb-3">注 册</button>
+            </form>
+        </div>
+        <div class="auth-card-footer">
+            已有账户？<a href="/login">立即登录</a>
+        </div>
+    </div>
+</div>
+<script>
+async function handleRegister(e) {
+    e.preventDefault();
+    const username = document.getElementById('username').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirm-password').value;
+
+    if (password !== confirm) {
+        showAlert('两次输入的密码不一致');
+        return;
+    }
+
+    try {
+        const resp = await fetch(API_BASE + '/auth/register', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username, email, password})
+        });
+        const data = await resp.json();
+        if (!resp.ok) {
+            showAlert(data.error || 'Registration failed');
+            return;
+        }
+        setAuth(data.token, data.user);
+        window.location.href = '/dashboard';
+    } catch (err) {
+        showAlert('Network error: ' + err.message);
+    }
+}
+</script>
+{% endblock %}

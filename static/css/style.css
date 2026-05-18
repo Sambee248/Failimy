@@ -1,0 +1,20 @@
+/* === Page-specific styles (extends shadcn.css) === */
+
+/* === Search input focus === */
+#search-input:focus {
+    box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.15);
+    border-color: #86b7fe;
+}
+
+/* === Range slider === */
+.form-range::-webkit-slider-thumb {
+    background: #0d6efd;
+}
+.form-range::-moz-range-thumb {
+    background: #0d6efd;
+}
+
+/* === Chart container === */
+[id$="-chart"] {
+    width: 100%;
+}

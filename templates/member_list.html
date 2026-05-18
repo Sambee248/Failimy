@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}成员管理 - 家族谱系管理系统{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="/families" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+    <h3 id="family-title">成员管理</h3>
+    <div class="d-flex gap-2">
+        <a href="/families/{{ family_id }}/tree" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-diagram-2 me-1"></i>家族树
+        </a>
+        <a href="/families/{{ family_id }}/import" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-upload me-1"></i>批量导入
+        </a>
+        <a href="/members/new?family_id={{ family_id }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus-lg me-1"></i>添加成员
+        </a>
+    </div>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- Search & Filter -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="filter-bar">
+            <input type="text" class="form-control" id="search-input" placeholder="搜索姓名..." oninput="debounceSearch()" style="min-width:200px;">
+            <select class="form-select" id="filter-gender" onchange="loadMembers()" style="min-width:120px;">
+                <option value="">全部性别</option>
+                <option value="M">男</option>
+                <option value="F">女</option>
+            </select>
+            <input type="number" class="form-control" id="filter-generation" placeholder="世代" onchange="loadMembers()" style="min-width:100px;">
+            <button class="btn btn-secondary btn-sm" onclick="resetFilters()">重置筛选</button>
+        </div>
+    </div>
+</div>
+
+<!-- Members Table -->
+<div class="chart-card">
+    <table class="table mb-0">
+        <thead>
+            <tr>
+                <th>姓名</th>
+                <th>性别</th>
+                <th>世代</th>
+                <th>出生日期</th>
+                <th>状态</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody id="members-tbody"></tbody>
+    </table>
+    <div class="card-footer">
+        <div class="d-flex justify-between items-center">
+            <span class="text-muted text-sm" id="total-info"></span>
+            <nav>
+                <ul class="pagination" id="pagination"></ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<script>
+const familyId = {{ family_id }};
+let currentPage = 1;
+let searchTimer;
+
+function debounceSearch() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadMembers(), 300);
+}
+
+function resetFilters() {
+    document.getElementById('search-input').value = '';
+    document.getElementById('filter-gender').value = '';
+    document.getElementById('filter-generation').value = '';
+    currentPage = 1;
+    loadMembers();
+}
+
+async function loadMembers() {
+    const search = document.getElementById('search-input').value.trim();
+    const gender = document.getElementById('filter-gender').value;
+    const generation = document.getElementById('filter-generation').value;
+    const params = new URLSearchParams({ page: currentPage, per_page: 20 });
+    if (search) params.set('search', search);
+    if (gender) params.set('gender', gender);
+    if (generation) params.set('generation', generation);
+
+    try {
+        const data = await apiGet(`/members/families/${familyId}?${params}`);
+        document.getElementById('total-info').textContent = `共 ${data.total} 位成员`;
+
+        const tbody = document.getElementById('members-tbody');
+        if (data.members.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">暂无成员数据</td></tr>';
+        } else {
+            tbody.innerHTML = data.members.map(m => `
+                <tr>
+                    <td><a href="/members/${m.member_id}" class="fw-medium">${m.name}</a></td>
+                    <td><span class="badge ${m.gender === 'M' ? 'badge-male' : 'badge-female'}">${m.gender === 'M' ? '男' : '女'}</span></td>
+                    <td>第${m.generation}代</td>
+                    <td class="text-sm">${m.birth_date || '-'}</td>
+                    <td>${m.death_date ? '<span class="badge badge-deceased">已故</span>' : '<span class="badge badge-alive">在世</span>'}</td>
+                    <td>
+                        <div class="d-flex gap-1">
+                            <a href="/members/${m.member_id}" class="btn btn-outline-primary btn-sm">详情</a>
+                            <a href="/members/${m.member_id}/edit" class="btn btn-outline-primary btn-sm">编辑</a>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Pagination
+        const pagination = document.getElementById('pagination');
+        let html = '';
+        for (let p = 1; p <= data.total_pages; p++) {
+            html += `<li class="page-item ${p === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="goPage(${p}); return false;">${p}</a></li>`;
+        }
+        pagination.innerHTML = html;
+    } catch (err) {
+        showAlert('加载失败: ' + err.message);
+    }
+}
+
+function goPage(page) {
+    currentPage = page;
+    loadMembers();
+}
+
+async function loadFamilyName() {
+    try {
+        const family = await apiGet('/families/' + familyId);
+        document.getElementById('family-title').textContent = family.family_name + ' - 成员管理';
+        document.title = family.family_name + ' - 成员管理';
+    } catch (e) {}
+}
+
+loadFamilyName();
+loadMembers();
+</script>
+{% endblock %}

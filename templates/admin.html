@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}管理员面板 - 家族谱系管理系统{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h3><i class="bi bi-shield-lock me-2"></i>管理员面板</h3>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- Stats -->
+<div class="stats-grid mb-4" id="admin-stats"></div>
+
+<!-- Users -->
+<div class="chart-card mb-4">
+    <div class="chart-card-header"><i class="bi bi-people me-2"></i>用户管理</div>
+    <div class="p-0">
+        <table class="table mb-0">
+            <thead><tr><th>用户名</th><th>邮箱</th><th>家族数</th><th>管理员</th><th>注册时间</th><th>操作</th></tr></thead>
+            <tbody id="users-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- All Families -->
+<div class="chart-card">
+    <div class="chart-card-header"><i class="bi bi-folder2 me-2"></i>所有家族</div>
+    <div class="p-0">
+        <table class="table mb-0">
+            <thead><tr><th>家族名称</th><th>拥有者</th><th>成员数</th><th>创建时间</th><th>操作</th></tr></thead>
+            <tbody id="families-tbody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+async function loadAdminData() {
+    try {
+        var isAdmin = await apiGet('/admin/me');
+        if (!isAdmin.is_admin) {
+            document.body.innerHTML = '<div class="auth-container"><div class="auth-card"><div class="auth-card-header"><h2>权限不足</h2><p>此页面仅限管理员访问</p></div></div></div>';
+            return;
+        }
+    } catch(e) { window.location.href = '/login'; return; }
+
+    // Stats
+    var stats = await apiGet('/admin/stats');
+    document.getElementById('admin-stats').innerHTML =
+        '<div class="stat-card stat-members stat-colored"><div class="stat-value">'+stats.total_users+'</div><div class="stat-label">用户总数</div></div>' +
+        '<div class="stat-card stat-families stat-colored"><div class="stat-value">'+stats.total_families+'</div><div class="stat-label">家族总数</div></div>' +
+        '<div class="stat-card stat-male stat-colored"><div class="stat-value">'+stats.total_members+'</div><div class="stat-label">成员总数</div></div>' +
+        '<div class="stat-card stat-ratio stat-colored"><div class="stat-value">'+stats.total_marriages+'</div><div class="stat-label">婚姻总数</div></div>';
+
+    // Users
+    var users = await apiGet('/admin/users');
+    document.getElementById('users-tbody').innerHTML = users.map(function(u) {
+        return '<tr><td><b>'+u.username+'</b></td><td>'+ (u.email||'-') +'</td><td>'+u.family_count+'</td>' +
+            '<td>' + (u.is_admin ? '<span class="badge badge-alive">是</span>' : '<span class="badge badge-secondary">否</span>') + '</td>' +
+            '<td class="text-sm text-muted">'+new Date(u.created_at).toLocaleDateString('zh-CN')+'</td>' +
+            '<td><div class="d-flex gap-1">' +
+                (u.user_id !== getUser().user_id
+                    ? '<button class="btn btn-outline-primary btn-sm" onclick="toggleAdmin('+u.user_id+')">'+ (u.is_admin ? '取消' : '设为') +'管理</button>' +
+                      '<button class="btn btn-outline-danger btn-sm" onclick="delUser('+u.user_id+',\''+u.username+'\')">删除</button>'
+                    : '<span class="text-muted text-sm">当前用户</span>') +
+            '</div></td></tr>';
+    }).join('');
+
+    // Families
+    var families = await apiGet('/admin/families');
+    document.getElementById('families-tbody').innerHTML = families.map(function(f) {
+        return '<tr><td><a href="/families/'+f.family_id+'/members" class="fw-medium">'+f.family_name+'</a></td>' +
+            '<td>'+f.owner_username+'</td><td>'+f.member_count+'</td>' +
+            '<td class="text-sm text-muted">'+new Date(f.created_at).toLocaleDateString('zh-CN')+'</td>' +
+            '<td><button class="btn btn-outline-danger btn-sm" onclick="delFamily('+f.family_id+',\''+f.family_name+'\')">删除</button></td></tr>';
+    }).join('');
+}
+
+async function toggleAdmin(userId) {
+    try {
+        var r = await apiPost('/admin/users/'+userId+'/admin');
+        showAlert(r.username + ' 管理员已' + (r.is_admin ? '启用' : '取消'), 'success');
+        loadAdminData();
+    } catch(e) { showAlert('操作失败: '+e.message); }
+}
+
+async function delUser(id, name) {
+    if (!confirm('确定删除用户 "'+name+'" 及其所有数据？此操作不可撤销！')) return;
+    try { await apiDelete('/admin/users/'+id); loadAdminData(); showAlert('已删除', 'success'); }
+    catch(e) { showAlert('删除失败: '+e.message); }
+}
+
+async function delFamily(id, name) {
+    if (!confirm('确定删除家族 "'+name+'" 及其所有成员？')) return;
+    try { await apiDelete('/admin/families/'+id); loadAdminData(); showAlert('已删除', 'success'); }
+    catch(e) { showAlert('删除失败: '+e.message); }
+}
+
+loadAdminData();
+</script>
+{% endblock %}

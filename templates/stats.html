@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}统计报表 - 家族谱系管理系统{% endblock %}
+{% block content %}
+<div class="page-header">
+    <a href="/families/{{ family_id }}/members" class="text-decoration-none me-2"><i class="bi bi-arrow-left"></i></a>
+    <h3 id="stats-title">统计报表</h3>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- Summary Cards -->
+<div class="stats-grid" id="summary-cards"></div>
+
+<!-- Charts Row 1 -->
+<div class="row mb-4">
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header">各代人数分布</div>
+            <div class="chart-card-body">
+                <div id="gen-bar-chart" style="height: 350px;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header">各代性别构成</div>
+            <div class="chart-card-body">
+                <div id="gen-gender-chart" style="height: 350px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Lifespan Chart -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="chart-card">
+            <div class="chart-card-header">各代平均寿命</div>
+            <div class="chart-card-body">
+                <div id="lifespan-chart" style="height: 350px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Unmarried Seniors + Anomalies -->
+<div class="row">
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header"><i class="bi bi-exclamation-triangle me-2"></i>50岁以上无配偶成员</div>
+            <div class="chart-card-body p-0" id="unmarried-seniors"></div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header"><i class="bi bi-bug me-2"></i>数据异常检测</div>
+            <div class="chart-card-body p-0" id="outliers-list"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+const familyId = {{ family_id }};
+
+async function loadExtraData() {
+    try {
+        var seniors = await apiGet('/families/' + familyId + '/unmarried-seniors');
+        var sDiv = document.getElementById('unmarried-seniors');
+        if (seniors.total === 0) {
+            sDiv.innerHTML = '<p class="text-muted text-sm p-4">未发现符合条件的成员</p>';
+        } else {
+            sDiv.innerHTML = seniors.members.map(function(m) {
+                return '<div class="relation-row"><div class="relation-body"><div class="relation-header">' +
+                    '<a href="/members/' + m.member_id + '" class="relation-name">' + m.name + '</a>' +
+                    '<span class="badge ' + (m.gender === 'M' ? 'badge-male' : 'badge-female') + '">' + (m.gender === 'M' ? '男' : '女') + '</span>' +
+                    '<span class="badge badge-secondary">第' + m.generation + '代</span>' +
+                    '<span class="badge badge-warning">' + m.age + '岁</span>' +
+                    '</div><div class="relation-meta text-muted text-sm">出生: ' + (m.birth_date || '未知') + '</div></div></div>';
+            }).join('');
+        }
+    } catch(e) {}
+
+    try {
+        var outliers = await apiGet('/families/' + familyId + '/outliers');
+        var oDiv = document.getElementById('outliers-list');
+        if (outliers.total === 0) {
+            oDiv.innerHTML = '<p class="text-muted text-sm p-4">未发现数据异常</p>';
+        } else {
+            var typeLabels = { long_lifespan: '寿命异常', death_before_birth: '日期倒置', duplicate_name: '重名成员', generation_gap: '世代跳跃' };
+            oDiv.innerHTML = outliers.anomalies.map(function(a) {
+                var badgeCls = a.type === 'long_lifespan' ? 'badge-warning' : a.type === 'death_before_birth' ? 'badge-danger' : a.type === 'duplicate_name' ? 'badge-info' : 'badge-secondary';
+                return '<div class="relation-row"><div class="relation-body"><div class="relation-header">' +
+                    '<span class="badge ' + badgeCls + '">' + (typeLabels[a.type] || a.type) + '</span>' +
+                    '<span class="fw-medium">' + (a.name || '') + '</span>' +
+                    '</div><div class="relation-meta text-muted text-sm">' + a.detail + '</div></div></div>';
+            }).join('');
+        }
+    } catch(e) {}
+}
+
+async function loadStats() {
+    try {
+        const data = await apiGet(`/families/${familyId}/stats`);
+
+        document.getElementById('stats-title').textContent = data.family_name + ' - 统计报表';
+        document.title = data.family_name + ' - 统计报表';
+
+        // Summary cards
+        const genderRatio = data.female_count > 0 ? (data.male_count / data.female_count).toFixed(2) : 'N/A';
+        document.getElementById('summary-cards').innerHTML = `
+            <div class="stat-card stat-members stat-colored">
+                <div class="stat-value">${data.total_members}</div>
+                <div class="stat-label">总人数</div>
+            </div>
+            <div class="stat-card stat-male stat-colored">
+                <div class="stat-value">${data.male_count}</div>
+                <div class="stat-label">男性</div>
+            </div>
+            <div class="stat-card stat-female stat-colored">
+                <div class="stat-value">${data.female_count}</div>
+                <div class="stat-label">女性</div>
+            </div>
+            <div class="stat-card stat-ratio stat-colored">
+                <div class="stat-value">${genderRatio}</div>
+                <div class="stat-label">男女比例</div>
+            </div>`;
+
+        // Generation bar chart
+        const genBarChart = echarts.init(document.getElementById('gen-bar-chart'));
+        const generations = data.generations.map(g => '第' + g.generation + '代');
+        genBarChart.setOption({
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'category', data: generations, axisLabel: { rotate: 45, fontSize: 10 } },
+            yAxis: { type: 'value', name: '人数' },
+            series: [{
+                type: 'bar',
+                data: data.generations.map(g => g.count),
+                itemStyle: {
+                    borderRadius: [6, 6, 0, 0],
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: '#5470c6' },
+                        { offset: 1, color: '#91cc75' }
+                    ])
+                },
+                barMaxWidth: 48
+            }]
+        });
+
+        // Generation gender chart
+        const genGenderChart = echarts.init(document.getElementById('gen-gender-chart'));
+        genGenderChart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['男性', '女性'], itemWidth: 10, itemHeight: 10 },
+            xAxis: { type: 'category', data: generations, axisLabel: { rotate: 45, fontSize: 10 } },
+            yAxis: { type: 'value', name: '人数' },
+            series: [
+                { name: '男性', type: 'bar', data: data.generations.map(g => g.male), color: '#5470c6', barGap: 0, barMaxWidth: 32, itemStyle: { borderRadius: [4, 4, 0, 0] } },
+                { name: '女性', type: 'bar', data: data.generations.map(g => g.female), color: '#fc8452', barMaxWidth: 32, itemStyle: { borderRadius: [4, 4, 0, 0] } }
+            ]
+        });
+
+        // Lifespan chart
+        const lifespanChart = echarts.init(document.getElementById('lifespan-chart'));
+        const lifespanGens = data.avg_lifespan.map(l => '第' + l.generation + '代');
+        lifespanChart.setOption({
+            tooltip: { trigger: 'axis' },
+            xAxis: { type: 'category', data: lifespanGens, axisLabel: { rotate: 45, fontSize: 10 } },
+            yAxis: { type: 'value', name: '平均寿命（岁）' },
+            series: [{
+                type: 'line',
+                data: data.avg_lifespan.map(l => l.avg_lifespan),
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 8,
+                lineStyle: { width: 3, color: '#ee6666' },
+                itemStyle: { color: '#ee6666' },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(238, 102, 102, 0.25)' },
+                        { offset: 1, color: 'rgba(238, 102, 102, 0.02)' }
+                    ])
+                }
+            }]
+        });
+    } catch (err) {
+        showAlert('加载统计数据失败: ' + err.message);
+    }
+}
+
+loadStats();
+loadExtraData();
+</script>
+{% endblock %}

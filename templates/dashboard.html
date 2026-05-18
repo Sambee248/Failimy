@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - 家族谱系管理系统{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h3><i class="bi bi-speedometer2 me-2"></i>仪表盘</h3>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- Stats Cards -->
+<div class="stats-grid" id="stats-cards">
+    <div class="stat-card stat-families">
+        <div class="stat-value" id="stat-families">-</div>
+        <div class="stat-label">家族数量</div>
+    </div>
+    <div class="stat-card stat-members">
+        <div class="stat-value" id="stat-members">-</div>
+        <div class="stat-label">总成员数</div>
+    </div>
+    <div class="stat-card stat-male">
+        <div class="stat-value" id="stat-male">-</div>
+        <div class="stat-label">男性成员</div>
+    </div>
+    <div class="stat-card stat-female">
+        <div class="stat-value" id="stat-female">-</div>
+        <div class="stat-label">女性成员</div>
+    </div>
+</div>
+
+<!-- Chart + Quick Actions -->
+<div class="row mb-4">
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header">性别比例</div>
+            <div class="chart-card-body">
+                <div id="gender-chart" style="height: 300px;"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header">快捷操作</div>
+            <div class="chart-card-body">
+                <div class="quick-actions">
+                    <a href="/families" class="quick-action-card">
+                        <div class="qa-icon" style="background:hsl(217,91%,93%);color:hsl(217,91%,50%);">
+                            <i class="bi bi-folder2"></i>
+                        </div>
+                        <div class="qa-body">
+                            <div class="qa-title">管理家族</div>
+                            <div class="qa-desc">查看和创建家族谱系</div>
+                        </div>
+                    </a>
+                    <a href="/relation/path" class="quick-action-card">
+                        <div class="qa-icon" style="background:hsl(142,76%,90%);color:hsl(142,76%,36%);">
+                            <i class="bi bi-diagram-3"></i>
+                        </div>
+                        <div class="qa-body">
+                            <div class="qa-title">血缘查询</div>
+                            <div class="qa-desc">查找两人之间的血缘关系</div>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Members -->
+<div class="chart-card">
+    <div class="chart-card-header">
+        <span><i class="bi bi-clock-history me-2"></i>最近添加的成员</span>
+    </div>
+    <div class="p-0">
+        <table class="table mb-0">
+            <thead>
+                <tr><th>姓名</th><th>性别</th><th>家族</th><th>世代</th><th>添加时间</th></tr>
+            </thead>
+            <tbody id="recent-members"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+async function loadDashboard() {
+    try {
+        const data = await apiGet('/dashboard');
+        document.getElementById('stat-families').textContent = data.total_families;
+        document.getElementById('stat-members').textContent = data.total_members;
+        document.getElementById('stat-male').textContent = data.male_count;
+        document.getElementById('stat-female').textContent = data.female_count;
+
+        // Gender donut chart
+        const chart = echarts.init(document.getElementById('gender-chart'));
+        chart.setOption({
+            tooltip: { trigger: 'item' },
+            legend: { bottom: 0, itemWidth: 10, itemHeight: 10 },
+            series: [{
+                type: 'pie',
+                radius: ['55%', '80%'],
+                center: ['50%', '45%'],
+                itemStyle: { borderRadius: 8, borderColor: '#fff', borderWidth: 2 },
+                label: { show: true, formatter: '{b}\n{c}人', fontSize: 12 },
+                emphasis: { label: { fontSize: 16, fontWeight: 'bold' } },
+                data: [
+                    { value: data.male_count, name: '男性', itemStyle: { color: '#5470c6' } },
+                    { value: data.female_count, name: '女性', itemStyle: { color: '#fc8452' } }
+                ]
+            }]
+        });
+
+        // Recent members
+        const tbody = document.getElementById('recent-members');
+        if (data.recent_members.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">暂无数据</td></tr>';
+        } else {
+            tbody.innerHTML = data.recent_members.map(m => `
+                <tr>
+                    <td><a href="/members/${m.member_id}" class="fw-medium">${m.name}</a></td>
+                    <td><span class="badge ${m.gender === 'M' ? 'badge-male' : 'badge-female'}">${m.gender === 'M' ? '男' : '女'}</span></td>
+                    <td>${m.family_name}</td>
+                    <td>第${m.generation}代</td>
+                    <td class="text-muted text-sm">${new Date(m.created_at).toLocaleDateString('zh-CN')}</td>
+                </tr>
+            `).join('');
+        }
+    } catch (err) {
+        showAlert('加载失败: ' + err.message);
+    }
+}
+
+loadDashboard();
+</script>
+{% endblock %}

@@ -1,0 +1,590 @@
+{% extends "base.html" %}
+{% block title %}成员详情 - 家族谱系管理系统{% endblock %}
+{% block content %}
+<div id="alert-container"></div>
+
+<nav class="breadcrumb">
+    <span class="breadcrumb-item"><a href="/families">家族列表</a></span>
+    <span class="breadcrumb-item"><a href="#" id="breadcrumb-family"></a></span>
+    <span class="breadcrumb-item active" id="breadcrumb-member">成员详情</span>
+</nav>
+
+<!-- Basic Info - full width -->
+<div class="chart-card mb-4" id="member-info-card">
+    <div class="chart-card-header">
+        <span><i class="bi bi-person-circle me-2"></i>基本信息</span>
+        <div class="d-flex gap-1">
+            <a href="#" id="btn-edit" class="btn btn-outline-primary btn-sm">编辑</a>
+            <button class="btn btn-outline-danger btn-sm" onclick="deleteMember()">删除</button>
+        </div>
+    </div>
+    <div class="chart-card-body" id="member-info"></div>
+</div>
+
+<!-- Relationships: Parents + Spouses -->
+<div class="row mb-4">
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <span><i class="bi bi-arrow-up-circle me-2"></i>父母</span>
+                <button class="btn btn-outline-primary btn-sm" onclick="openAddRelation('parent')">
+                    <i class="bi bi-plus-lg"></i> 添加
+                </button>
+            </div>
+            <div class="chart-card-body p-0" id="parents-list"></div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <span><i class="bi bi-heart me-2"></i>配偶</span>
+                <button class="btn btn-outline-primary btn-sm" onclick="openAddRelation('spouse')">
+                    <i class="bi bi-plus-lg"></i> 添加
+                </button>
+            </div>
+            <div class="chart-card-body p-0" id="spouses-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Relationships: Children + Siblings -->
+<div class="row mb-4">
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <span><i class="bi bi-arrow-down-circle me-2"></i>子女</span>
+                <button class="btn btn-outline-primary btn-sm" onclick="openAddRelation('child')">
+                    <i class="bi bi-plus-lg"></i> 添加
+                </button>
+            </div>
+            <div class="chart-card-body p-0" id="children-list"></div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header">
+                <span><i class="bi bi-people me-2"></i>兄弟姐妹</span>
+                <button class="btn btn-outline-primary btn-sm" onclick="openAddSibling()">
+                    <i class="bi bi-plus-lg"></i> 添加
+                </button>
+            </div>
+            <div class="chart-card-body p-0" id="siblings-list"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Family Tree -->
+<div class="chart-card">
+    <div class="chart-card-header">
+        <span><i class="bi bi-diagram-2 me-2"></i>家族树</span>
+        <div class="d-flex items-center gap-2">
+            <select class="form-select form-select-sm" id="tree-direction" style="width:130px;">
+                <option value="descendants">后代</option>
+                <option value="ancestors">祖先</option>
+            </select>
+            <input type="number" id="tree-depth" value="5" min="1" max="15" class="form-control form-control-sm" style="width:65px;">
+            <span class="text-muted text-sm">层</span>
+        </div>
+    </div>
+    <div class="chart-card-body">
+        <div id="tree-chart" style="height: 420px;"></div>
+    </div>
+</div>
+
+<!-- ===== Add Relation Modal ===== -->
+<div class="modal fade" id="relationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="relation-modal-title">添加关系</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="modal-alert"></div>
+                <div class="d-flex justify-center mb-3">
+                    <div class="tab-toggle-group">
+                        <button type="button" class="tab-toggle-btn active" id="tab-btn-select" onclick="switchRelationTab('select')">选择已有成员</button>
+                        <button type="button" class="tab-toggle-btn" id="tab-btn-create" onclick="switchRelationTab('create')">创建新成员</button>
+                    </div>
+                </div>
+                <div id="panel-select">
+                    <div class="mb-3">
+                        <label class="form-label">搜索已有成员</label>
+                        <input type="text" class="form-control" id="member-search" placeholder="输入姓名，至少2个字符自动搜索...">
+                    </div>
+                    <div id="member-search-results" class="search-results">
+                        <div class="text-muted text-sm p-2">输入至少2个字符后自动搜索</div>
+                    </div>
+                    <input type="hidden" id="selected-member-id">
+                    <div id="selected-member-display" class="alert alert-info mt-2 d-none">
+                        已选择: <strong id="selected-member-name"></strong>
+                    </div>
+                </div>
+                <div id="panel-create" style="display:none;">
+                    <div class="row">
+                        <div class="col-6 mb-2"><label class="form-label">姓名 <span style="color:var(--destructive)">*</span></label><input type="text" class="form-control" id="new-name"></div>
+                        <div class="col-3 mb-2"><label class="form-label">性别</label><select class="form-select" id="new-gender"><option value="M">男</option><option value="F">女</option></select></div>
+                        <div class="col-3 mb-2"><label class="form-label">世代</label><input type="number" class="form-control" id="new-generation" value="1" min="0"></div>
+                        <div class="col-6 mb-2"><label class="form-label">出生日期</label><input type="date" class="form-control" id="new-birth"></div>
+                        <div class="col-6 mb-2"><label class="form-label">逝世日期</label><input type="date" class="form-control" id="new-death"></div>
+                    </div>
+                </div>
+                <div class="mt-3" id="relation-extra-fields"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="submitRelation()">确认添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var memberId = {{ member_id }};
+    var currentMember = null;
+    var relationMode = '';
+    var modalInst = null;
+    var searchTimer = null;
+    var searchReqId = 0;
+
+    // Helper: render a person row in relationship list
+    function personRow(p, relationLabel, removeFn) {
+        var genderBadge = p.gender === 'M'
+            ? '<span class="badge badge-male">男</span>'
+            : '<span class="badge badge-female">女</span>';
+        var alive = p.death_date
+            ? '<span class="badge badge-deceased">已故</span>'
+            : '<span class="badge badge-alive">在世</span>';
+        var dates = [];
+        if (p.birth_date) dates.push('生: ' + p.birth_date);
+        if (p.death_date) dates.push('卒: ' + p.death_date);
+        var dateStr = dates.length > 0 ? dates.join(' &middot; ') : '生卒未知';
+
+        return '<div class="relation-row">' +
+            '<div class="relation-body">' +
+                '<div class="relation-header">' +
+                    '<a href="/members/' + p.member_id + '" class="relation-name">' + p.name + '</a>' +
+                    genderBadge + alive +
+                    '<span class="badge badge-secondary">第' + p.generation + '代</span>' +
+                    (relationLabel ? '<span class="text-muted text-sm">' + relationLabel + '</span>' : '') +
+                '</div>' +
+                '<div class="relation-meta text-muted text-sm">' + dateStr + '</div>' +
+            '</div>' +
+            (removeFn ? '<div class="relation-action"><button class="btn btn-outline-danger btn-sm btn-icon" onclick="' + removeFn + '" title="解除关系"><i class="bi bi-x-lg"></i></button></div>' : '') +
+        '</div>';
+    }
+
+    function emptyState(msg) {
+        return '<div class="empty-state" style="padding:1.5rem 1rem;"><div class="empty-text">' + msg + '</div></div>';
+    }
+
+    // ===== Tab switching =====
+    window.switchRelationTab = function(tab) {
+        document.getElementById('panel-select').style.display = (tab === 'select') ? 'block' : 'none';
+        document.getElementById('panel-create').style.display = (tab === 'create') ? 'block' : 'none';
+        document.getElementById('tab-btn-select').classList.toggle('active', tab === 'select');
+        document.getElementById('tab-btn-create').classList.toggle('active', tab === 'create');
+    };
+
+    // ===== Search members =====
+    document.getElementById('member-search').addEventListener('input', function() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(doSearch, 300);
+    });
+
+    async function doSearch() {
+        var q = document.getElementById('member-search').value.trim();
+        var results = document.getElementById('member-search-results');
+        if (!currentMember || !currentMember.family_id) {
+            results.innerHTML = '<div class="text-muted text-sm p-2">成员数据加载中，请稍候...</div>';
+            return;
+        }
+        if (q.length < 2) {
+            results.innerHTML = '<div class="text-muted text-sm p-2">输入至少2个字符后自动搜索</div>';
+            return;
+        }
+        var myId = ++searchReqId;
+        results.innerHTML = '<div class="text-muted text-sm p-2">搜索中...</div>';
+        var url = '/api/members/search?q=' + encodeURIComponent(q) + '&limit=20';
+        var tok = getToken();
+        try {
+            var resp = await fetch(url, { headers: tok ? {'Authorization': 'Bearer ' + tok} : {} });
+            if (myId !== searchReqId) return;
+            if (resp.status === 401) { clearAuth(); window.location.href = '/login'; return; }
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var data = await resp.json();
+            if (myId !== searchReqId) return;
+            var filtered = (data.members || []).filter(function(m) { return m.member_id !== memberId; });
+            if (filtered.length === 0) {
+                results.innerHTML = '<div class="text-muted text-sm p-2">未找到匹配成员，可切换到"创建新成员"</div>';
+            } else {
+                results.innerHTML = filtered.map(function(m) {
+                    return '<div class="search-result-item" onclick="window._selectMember(' + m.member_id + ', \'' + m.name.replace(/'/g, "\\'") + '\')">' +
+                        m.name + ' <span class="text-muted text-sm">(' + (m.gender === 'M' ? '男' : '女') + ', 第' + m.generation + '代)</span></div>';
+                }).join('');
+            }
+        } catch(e) {
+            if (myId !== searchReqId) return;
+            results.innerHTML = '<div class="text-danger text-sm p-2">搜索失败: ' + (e.message || '未知') + '</div>';
+        }
+    }
+
+    window._selectMember = function(id, name) {
+        document.getElementById('selected-member-id').value = id;
+        document.getElementById('selected-member-name').textContent = name;
+        document.getElementById('selected-member-display').classList.remove('d-none');
+    };
+
+    // ===== Sibling modal =====
+    window.openAddSibling = function() {
+        if (!currentMember || !currentMember.parents || currentMember.parents.length === 0) {
+            showAlert('请先为当前成员添加至少一位父母，然后才能添加兄弟姐妹');
+            return;
+        }
+        var parentOpts = currentMember.parents.map(function(p) {
+            return '<option value="' + p.member_id + '">' + p.name + ' (' + (p.gender === 'M' ? '父' : '母') + ')</option>';
+        }).join('');
+        var html = '<div class="modal fade" id="siblingModal" tabindex="-1">' +
+            '<div class="modal-dialog modal-lg"><div class="modal-content">' +
+            '<div class="modal-header"><h5 class="modal-title">添加兄弟姐妹</h5><button type="button" class="btn-close" data-bs-dismiss="modal">&times;</button></div>' +
+            '<div class="modal-body"><div id="sibling-modal-alert"></div>' +
+            '<div class="mb-3"><label class="form-label">通过哪位父母建立兄弟姐妹关系</label><select class="form-select" id="sibling-parent-select">' + parentOpts + '</select></div>' +
+            '<div class="d-flex justify-center mb-3"><div class="tab-toggle-group">' +
+            '<button type="button" class="tab-toggle-btn active" id="sib-tab-select" onclick="switchSiblingTab(\'select\')">选择已有成员</button>' +
+            '<button type="button" class="tab-toggle-btn" id="sib-tab-create" onclick="switchSiblingTab(\'create\')">创建新成员</button></div></div>' +
+            '<div id="sib-panel-select"><input type="text" class="form-control mb-2" id="sib-search" placeholder="输入姓名搜索...">' +
+            '<div id="sib-search-results" class="search-results"></div>' +
+            '<input type="hidden" id="sib-selected-id"><div id="sib-selected-display" class="alert alert-info mt-2 d-none">已选择: <strong id="sib-selected-name"></strong></div></div>' +
+            '<div id="sib-panel-create" style="display:none;"><div class="row"><div class="col-6 mb-2"><label class="form-label">姓名</label><input type="text" class="form-control" id="sib-new-name"></div>' +
+            '<div class="col-3 mb-2"><label class="form-label">性别</label><select class="form-select" id="sib-new-gender"><option value="M">男</option><option value="F">女</option></select></div>' +
+            '<div class="col-3 mb-2"><label class="form-label">世代</label><input type="number" class="form-control" id="sib-new-generation" value="' + (currentMember ? currentMember.generation : 1) + '" min="0"></div>' +
+            '<div class="col-6 mb-2"><label class="form-label">出生日期</label><input type="date" class="form-control" id="sib-new-birth"></div>' +
+            '<div class="col-6 mb-2"><label class="form-label">逝世日期</label><input type="date" class="form-control" id="sib-new-death"></div></div></div></div>' +
+            '<div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>' +
+            '<button type="button" class="btn btn-primary" onclick="submitSibling()">确认添加</button></div></div></div></div>';
+        var old = document.getElementById('siblingModal');
+        if (old) old.remove();
+        document.body.insertAdjacentHTML('beforeend', html);
+        document.getElementById('sib-search').addEventListener('input', function() {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(doSiblingSearch, 300);
+        });
+        var modal = new bootstrap.Modal(document.getElementById('siblingModal'));
+        modal.show();
+        document.getElementById('siblingModal')._bsModal = modal;
+    };
+
+    window.switchSiblingTab = function(tab) {
+        document.getElementById('sib-panel-select').style.display = (tab === 'select') ? 'block' : 'none';
+        document.getElementById('sib-panel-create').style.display = (tab === 'create') ? 'block' : 'none';
+        document.getElementById('sib-tab-select').classList.toggle('active', tab === 'select');
+        document.getElementById('sib-tab-create').classList.toggle('active', tab === 'create');
+    };
+
+    window.submitSibling = async function() {
+        var alertDiv = document.getElementById('sibling-modal-alert');
+        var parentId = parseInt(document.getElementById('sibling-parent-select').value);
+        var isSelectTab = document.getElementById('sib-panel-select').style.display !== 'none';
+        var siblingId = null;
+        try {
+            if (isSelectTab) {
+                siblingId = parseInt(document.getElementById('sib-selected-id').value);
+                if (!siblingId) { alertDiv.innerHTML = '<div class="alert alert-warning">请先搜索并选择一名成员</div>'; return; }
+                if (siblingId === memberId) { alertDiv.innerHTML = '<div class="alert alert-warning">不能选择自己</div>'; return; }
+            } else {
+                var newName = document.getElementById('sib-new-name').value.trim();
+                if (!newName) { alertDiv.innerHTML = '<div class="alert alert-warning">请输入姓名</div>'; return; }
+                var nm = await apiPost('/members/families/' + currentMember.family_id, {
+                    name: newName, gender: document.getElementById('sib-new-gender').value,
+                    birth_date: document.getElementById('sib-new-birth').value || null,
+                    death_date: document.getElementById('sib-new-death').value || null,
+                    generation: parseInt(document.getElementById('sib-new-generation').value) || currentMember.generation
+                });
+                siblingId = nm.member_id;
+            }
+            await apiPost('/relations/parent-child', { parent_id: parentId, child_id: siblingId, relation_type: 'biological' });
+            var modalEl = document.getElementById('siblingModal');
+            if (modalEl._bsModal) modalEl._bsModal.hide();
+            modalEl.remove();
+            loadMember(); loadTree();
+            showAlert('兄弟姐妹添加成功', 'success');
+        } catch(err) { alertDiv.innerHTML = '<div class="alert alert-danger">操作失败: ' + err.message + '</div>'; }
+    };
+
+    async function doSiblingSearch() {
+        var q = document.getElementById('sib-search').value.trim();
+        var results = document.getElementById('sib-search-results');
+        if (q.length < 2) { results.innerHTML = '<div class="text-muted text-sm p-2">输入至少2个字符...</div>'; return; }
+        results.innerHTML = '<div class="text-muted text-sm p-2">搜索中...</div>';
+        var myId = ++searchReqId;
+        var url = '/api/members/search?q=' + encodeURIComponent(q) + '&limit=20';
+        var tok = getToken();
+        try {
+            var resp = await fetch(url, { headers: tok ? {'Authorization': 'Bearer ' + tok} : {} });
+            if (myId !== searchReqId) return;
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var data = await resp.json();
+            if (myId !== searchReqId) return;
+            var filtered = (data.members || []).filter(function(m) { return m.member_id !== memberId; });
+            if (filtered.length === 0) {
+                results.innerHTML = '<div class="text-muted text-sm p-2">未找到匹配成员</div>';
+            } else {
+                results.innerHTML = filtered.map(function(m) {
+                    return '<div class="search-result-item" onclick="var d=document;d.getElementById(\'sib-selected-id\').value=' + m.member_id + ';d.getElementById(\'sib-selected-name\').textContent=\'' + m.name + '\';d.getElementById(\'sib-selected-display\').classList.remove(\'d-none\')">' +
+                        m.name + ' <span class="text-muted text-sm">(' + (m.gender === 'M' ? '男' : '女') + ', 第' + m.generation + '代)</span></div>';
+                }).join('');
+            }
+        } catch(e) {
+            if (myId !== searchReqId) return;
+            results.innerHTML = '<div class="text-danger text-sm p-2">搜索失败: ' + e.message + '</div>';
+        }
+    }
+
+    // ===== Open relation modal =====
+    window.openAddRelation = function(mode) {
+        relationMode = mode;
+        var titles = { parent: '添加父母', spouse: '添加配偶', child: '添加子女' };
+        document.getElementById('relation-modal-title').textContent = titles[mode];
+        document.getElementById('member-search').value = '';
+        document.getElementById('member-search-results').innerHTML = '<div class="text-muted text-sm p-2">输入至少2个字符后自动搜索</div>';
+        document.getElementById('selected-member-id').value = '';
+        document.getElementById('selected-member-display').classList.add('d-none');
+        document.getElementById('new-name').value = '';
+        document.getElementById('new-birth').value = '';
+        document.getElementById('new-death').value = '';
+        document.getElementById('modal-alert').innerHTML = '';
+        switchRelationTab('select');
+        if (mode === 'child') {
+            document.getElementById('new-generation').value = currentMember ? currentMember.generation + 1 : 1;
+        } else if (mode === 'parent') {
+            document.getElementById('new-generation').value = currentMember ? Math.max(1, currentMember.generation - 1) : 1;
+        } else {
+            document.getElementById('new-generation').value = currentMember ? currentMember.generation : 1;
+        }
+        var extra = document.getElementById('relation-extra-fields');
+        if (mode === 'parent') {
+            extra.innerHTML = '<label class="form-label">关系类型</label><select class="form-select" id="relation-type"><option value="biological">亲生</option><option value="adopted">收养</option></select>' +
+                '<p class="text-muted text-sm mt-1">将所选成员设为 <b>' + (currentMember ? currentMember.name : '') + '</b> 的父母</p>';
+        } else if (mode === 'spouse') {
+            extra.innerHTML = '<label class="form-label">结婚日期</label><input type="date" class="form-control" id="marriage-date">';
+        } else {
+            extra.innerHTML = '<label class="form-label">关系类型</label><select class="form-select" id="relation-type"><option value="biological">亲生</option><option value="adopted">收养</option></select>' +
+                '<p class="text-muted text-sm mt-1"><b>' + (currentMember ? currentMember.name : '') + '</b> 将作为新成员的父/母</p>';
+        }
+        if (!modalInst) modalInst = new bootstrap.Modal(document.getElementById('relationModal'));
+        modalInst.show();
+    };
+
+    // ===== Submit relation =====
+    window.submitRelation = async function() {
+        var alertDiv = document.getElementById('modal-alert');
+        var isSelectTab = document.getElementById('panel-select').style.display !== 'none';
+        var relatedId = null;
+        try {
+            if (isSelectTab) {
+                relatedId = parseInt(document.getElementById('selected-member-id').value);
+                if (!relatedId) { alertDiv.innerHTML = '<div class="alert alert-warning">请先搜索并选择一名成员</div>'; return; }
+            } else {
+                var newName = document.getElementById('new-name').value.trim();
+                if (!newName) { alertDiv.innerHTML = '<div class="alert alert-warning">请输入姓名</div>'; return; }
+                var nm = await apiPost('/members/families/' + currentMember.family_id, {
+                    name: newName, gender: document.getElementById('new-gender').value,
+                    birth_date: document.getElementById('new-birth').value || null,
+                    death_date: document.getElementById('new-death').value || null,
+                    generation: parseInt(document.getElementById('new-generation').value) || 1
+                });
+                relatedId = nm.member_id;
+            }
+            if (relationMode === 'parent') {
+                await apiPost('/relations/parent-child', { parent_id: relatedId, child_id: memberId, relation_type: document.getElementById('relation-type').value });
+            } else if (relationMode === 'spouse') {
+                var hid = currentMember.gender === 'M' ? memberId : relatedId;
+                var wid = currentMember.gender === 'M' ? relatedId : memberId;
+                await apiPost('/relations/marriage', { husband_id: hid, wife_id: wid, marriage_date: document.getElementById('marriage-date').value || null });
+            } else {
+                await apiPost('/relations/parent-child', { parent_id: memberId, child_id: relatedId, relation_type: document.getElementById('relation-type').value });
+            }
+            modalInst.hide();
+            loadMember(); loadTree();
+            showAlert('关系添加成功', 'success');
+        } catch(err) { alertDiv.innerHTML = '<div class="alert alert-danger">操作失败: ' + err.message + '</div>'; }
+    };
+
+    // ===== Remove relations =====
+    window.removeParentChild = async function(parentId, childId) {
+        if (!confirm('确定要解除此亲子关系吗？')) return;
+        try { await apiDelete('/relations/parent-child/remove?parent_id=' + parentId + '&child_id=' + childId); loadMember(); loadTree(); showAlert('亲子关系已解除', 'success'); }
+        catch(e) { showAlert('解除失败: ' + e.message); }
+    };
+    window.removeMarriage = async function(spouseId) {
+        if (!confirm('确定要解除此婚姻关系吗？')) return;
+        try { await apiDelete('/relations/marriage/remove?member_id=' + memberId + '&spouse_id=' + spouseId); loadMember(); loadTree(); showAlert('婚姻关系已解除', 'success'); }
+        catch(e) { showAlert('解除失败: ' + e.message); }
+    };
+
+    // ===== Delete member =====
+    window.deleteMember = async function() {
+        if (!confirm('确定要删除此成员及其所有关系吗？此操作不可撤销！')) return;
+        try { await apiDelete('/members/' + memberId); window.location.href = '/families'; }
+        catch(e) { showAlert('删除失败: ' + e.message); }
+    };
+
+    // ===== Load member =====
+    async function loadMember() {
+        try {
+            var m = await apiGet('/members/' + memberId);
+            currentMember = m;
+            document.getElementById('breadcrumb-member').textContent = m.name;
+            document.getElementById('btn-edit').href = '/members/' + memberId + '/edit';
+            try {
+                var f = await apiGet('/families/' + m.family_id);
+                document.getElementById('breadcrumb-family').textContent = f.family_name;
+                document.getElementById('breadcrumb-family').href = '/families/' + m.family_id + '/members';
+            } catch(e) {}
+
+            // Profile info
+            var aliveStatus = m.death_date ? '<span class="badge badge-deceased">已故</span>' : '<span class="badge badge-alive">在世</span>';
+            document.getElementById('member-info').innerHTML =
+                '<div class="d-flex items-center gap-3 mb-3">' +
+                    '<h4 class="mb-0">' + m.name + '</h4>' +
+                    '<span class="badge ' + (m.gender === 'M' ? 'badge-male' : 'badge-female') + '">' + (m.gender === 'M' ? '男' : '女') + '</span>' +
+                    '<span class="badge badge-secondary">第' + m.generation + '代</span>' +
+                    aliveStatus +
+                '</div>' +
+                '<div class="d-flex gap-4 flex-wrap text-sm">' +
+                    '<span><span class="text-muted">出生：</span>' + (m.birth_date || '未知') + '</span>' +
+                    '<span><span class="text-muted">逝世：</span>' + (m.death_date || '在世') + '</span>' +
+                '</div>' +
+                (m.biography ? '<div class="mt-3 text-sm"><span class="text-muted">简介：</span>' + m.biography + '</div>' : '');
+
+            renderRelations(m);
+        } catch(e) { showAlert('加载失败: ' + e.message); }
+    }
+
+    function renderRelations(m) {
+        // Parents
+        var pDiv = document.getElementById('parents-list');
+        if (!m.parents || m.parents.length === 0) {
+            pDiv.innerHTML = emptyState('未记录父母信息');
+        } else {
+            pDiv.innerHTML = m.parents.map(function(p) {
+                var label = p.relation_type === 'adopted' ? '收养' : '亲生';
+                return personRow(p, '关系: ' + label + ' (' + (p.gender === 'M' ? '父亲' : '母亲') + ')',
+                    'removeParentChild(' + p.member_id + ', ' + memberId + ')');
+            }).join('');
+        }
+
+        // Spouses
+        var sDiv = document.getElementById('spouses-list');
+        if (!m.spouses || m.spouses.length === 0) {
+            sDiv.innerHTML = emptyState('暂无配偶');
+        } else {
+            sDiv.innerHTML = m.spouses.map(function(s) {
+                var label = s.marriage_date ? '结婚日期: ' + s.marriage_date : '';
+                return personRow(s, label, 'removeMarriage(' + s.member_id + ')');
+            }).join('');
+        }
+
+        // Children
+        var cDiv = document.getElementById('children-list');
+        if (!m.children || m.children.length === 0) {
+            cDiv.innerHTML = emptyState('暂无子女');
+        } else {
+            cDiv.innerHTML = m.children.map(function(c) {
+                var label = c.relation_type === 'adopted' ? '收养' : '亲生';
+                return personRow(c, (c.gender === 'M' ? '儿子' : '女儿') + ' · 关系: ' + label,
+                    'removeParentChild(' + memberId + ', ' + c.member_id + ')');
+            }).join('');
+        }
+
+        // Siblings
+        var sibDiv = document.getElementById('siblings-list');
+        var siblingMap = {};
+        if (m.parents && m.parents.length > 0) {
+            var siblingPromises = m.parents.map(function(p) {
+                return apiGet('/members/' + p.member_id).then(function(parentData) {
+                    (parentData.children || []).forEach(function(c) {
+                        if (c.member_id !== memberId) {
+                            var key = c.member_id;
+                            if (!siblingMap[key] || siblingMap[key].parentCount < 2) {
+                                var existing = siblingMap[key];
+                                siblingMap[key] = {
+                                    member_id: c.member_id, name: c.name, gender: c.gender,
+                                    birth_date: c.birth_date, death_date: c.death_date,
+                                    generation: c.generation,
+                                    parentName: existing ? existing.parentName + '/' + p.name : p.name,
+                                    parentCount: (existing ? existing.parentCount : 0) + 1
+                                };
+                            }
+                        }
+                    });
+                }).catch(function(){});
+            });
+            Promise.all(siblingPromises).then(function() {
+                var siblings = Object.values(siblingMap);
+                if (siblings.length === 0) {
+                    sibDiv.innerHTML = emptyState('未找到兄弟姐妹（已记录的父母没有其他子女）');
+                } else {
+                    sibDiv.innerHTML = siblings.map(function(s) {
+                        return personRow(s, '通过 ' + s.parentName, null);
+                    }).join('');
+                }
+            });
+        } else {
+            sibDiv.innerHTML = emptyState('请先添加父母，然后才能识别兄弟姐妹关系');
+        }
+    }
+
+    // ===== Tree =====
+    var treeChart = null;
+    async function loadTree() {
+        var dir = document.getElementById('tree-direction').value;
+        var depth = parseInt(document.getElementById('tree-depth').value);
+        try {
+            var data = await apiGet('/members/' + memberId + '/tree?direction=' + dir + '&depth=' + depth);
+            if (treeChart) { treeChart.dispose(); }
+            treeChart = echarts.init(document.getElementById('tree-chart'));
+            treeChart.setOption({
+                tooltip: { trigger: 'item', formatter: function(p) {
+                    if (!p.data) return '';
+                    return '<b>' + (p.data.name || '') + '</b><br/>性别: ' + (p.data.gender === 'M' ? '男' : '女') +
+                        '<br/>世代: 第' + (p.data.generation || '?') + '代<br/>出生: ' + (p.data.birth_date || '未知') +
+                        '<br/>逝世: ' + (p.data.death_date || '在世');
+                }},
+                series: [{
+                    type: 'tree', data: [data], top: '5%', left: '5%', bottom: '5%', right: '28%',
+                    symbolSize: 10, orient: 'LR', roam: true, initialTreeDepth: depth,
+                    itemStyle: {
+                        color: function(p) { return p.data.gender === 'M' ? '#5470c6' : '#fc8452'; },
+                        borderColor: '#fff', borderWidth: 2
+                    },
+                    lineStyle: { color: '#ccc', width: 1.5, curveness: 0.5 },
+                    label: {
+                        position: 'right', verticalAlign: 'middle', align: 'left',
+                        fontSize: 13, fontWeight: 500, distance: 10,
+                        color: '#1a1a1a', backgroundColor: '#f8f9fa',
+                        borderColor: '#e0e0e0', borderWidth: 1, borderRadius: 6,
+                        padding: [4, 10, 4, 10],
+                        shadowColor: 'rgba(0,0,0,0.05)', shadowBlur: 2, shadowOffsetY: 1
+                    },
+                    leaves: { label: {
+                        position: 'right', distance: 10, fontSize: 13, fontWeight: 500,
+                        color: '#1a1a1a', backgroundColor: '#f8f9fa',
+                        borderColor: '#e0e0e0', borderWidth: 1, borderRadius: 6,
+                        padding: [4, 10, 4, 10]
+                    }},
+                    expandAndCollapse: true, animationDuration: 500
+                }]
+            });
+        } catch(e) { console.error('Tree error:', e); }
+    }
+
+    // Bind tree control events (inside IIFE so loadTree is accessible)
+    document.getElementById('tree-direction').addEventListener('change', loadTree);
+    document.getElementById('tree-depth').addEventListener('input', loadTree);
+
+    loadMember(); loadTree();
+})();
+</script>
+{% endblock %}

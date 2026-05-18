@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}血缘关系查询 - 家族谱系管理系统{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h3><i class="bi bi-diagram-3 me-2"></i>血缘关系查询</h3>
+</div>
+
+<div id="alert-container"></div>
+
+<!-- Search Panel -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="filter-bar">
+            <div style="min-width:240px;flex:1;">
+                <label class="form-label">成员 A</label>
+                <select class="form-select" id="person-a">
+                    <option value="">请先选择家族</option>
+                </select>
+            </div>
+            <div style="min-width:240px;flex:1;">
+                <label class="form-label">成员 B</label>
+                <select class="form-select" id="person-b">
+                    <option value="">请先选择家族</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label">&nbsp;</label>
+                <button class="btn btn-primary" onclick="findPath()">
+                    <i class="bi bi-search me-1"></i>查询血缘关系
+                </button>
+            </div>
+        </div>
+        <p class="text-muted text-sm mt-2">查询两人之间是否存在血缘关系，并展示关系路径</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header"><i class="bi bi-info-circle me-2"></i>查询结果</div>
+            <div class="chart-card-body" id="result-panel">
+                <p class="text-muted text-center py-4">请选择两名成员并点击查询</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-6">
+        <div class="chart-card">
+            <div class="chart-card-header"><i class="bi bi-diagram-3 me-2"></i>关系路径图</div>
+            <div class="chart-card-body">
+                <div id="path-chart" style="height: 400px;"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function loadFamilyMembers() {
+    try {
+        const families = await apiGet('/families');
+        if (families.length === 0) {
+            document.getElementById('person-a').innerHTML = '<option value="">请先创建家族</option>';
+            document.getElementById('person-b').innerHTML = '<option value="">请先创建家族</option>';
+            return;
+        }
+
+        let allMembers = [];
+        for (const f of families) {
+            const data = await apiGet('/members/families/' + f.family_id + '?per_page=10000');
+            allMembers = allMembers.concat(data.members.map(m => {
+                m._familyName = f.family_name;
+                return m;
+            }));
+        }
+
+        const options = allMembers.map(m =>
+            '<option value="' + m.member_id + '">' + m.name +
+            ' [' + m._familyName + '] (第' + m.generation + '代, ' + (m.gender === 'M' ? '男' : '女') + ')</option>'
+        ).join('');
+
+        document.getElementById('person-a').innerHTML = '<option value="">请选择成员</option>' + options;
+        document.getElementById('person-b').innerHTML = '<option value="">请选择成员</option>' + options;
+    } catch (err) {
+        showAlert('加载成员列表失败: ' + err.message);
+    }
+}
+
+async function findPath() {
+    const personA = document.getElementById('person-a').value;
+    const personB = document.getElementById('person-b').value;
+
+    if (!personA || !personB) {
+        showAlert('请选择两名成员');
+        return;
+    }
+    if (personA === personB) {
+        showAlert('请选择不同的成员');
+        return;
+    }
+
+    try {
+        const data = await apiGet(`/relations/path?person_a=${personA}&person_b=${personB}`);
+
+        const resultPanel = document.getElementById('result-panel');
+
+        if (data.relation === 'none') {
+            resultPanel.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon"><i class="bi bi-x-circle"></i></div>
+                    <p class="empty-text">${data.message}</p>
+                </div>`;
+            const chart = echarts.init(document.getElementById('path-chart'));
+            chart.setOption({ title: { text: '无血缘关系', left: 'center', top: 'center', textStyle: { color: '#999' } } });
+            return;
+        }
+
+        if (data.relation === 'self') {
+            resultPanel.innerHTML = `<p class="text-center py-4">${data.message}</p>`;
+            return;
+        }
+
+        const pathNames = data.path.map(p => p.name).join(' → ');
+        resultPanel.innerHTML = `
+            <div class="mb-3">
+                <span class="badge badge-alive me-2">血缘关系</span>
+                <span class="text-muted text-sm">距离: ${data.total_distance} 步</span>
+            </div>
+            <div class="mb-3">
+                <div class="text-xs text-muted mb-1">关系路径</div>
+                <p class="fw-medium">${pathNames}</p>
+            </div>
+            <div>
+                <div class="text-xs text-muted mb-1">共同祖先</div>
+                <p>${data.common_ancestor.name} <span class="text-muted text-sm">(距A: ${data.common_ancestor.depth_from_a}代, 距B: ${data.common_ancestor.depth_from_b}代)</span></p>
+            </div>`;
+
+        // Path chart
+        const chartDom = document.getElementById('path-chart');
+        const chart = echarts.init(chartDom);
+
+        const nodes = data.path.map((p, i) => ({
+            name: p.name,
+            symbolSize: p.role === 'common_ancestor' ? 18 : (p.role === 'person_a' || p.role === 'person_b' ? 16 : 12),
+            itemStyle: {
+                color: p.role === 'common_ancestor' ? '#ee6666' :
+                       p.role === 'person_a' ? '#5470c6' :
+                       p.role === 'person_b' ? '#91cc75' : '#aaa'
+            },
+            label: { show: true, position: 'top', fontSize: 11 }
+        }));
+
+        const links = [];
+        for (let i = 0; i < data.path.length - 1; i++) {
+            links.push({
+                source: data.path[i].name,
+                target: data.path[i+1].name,
+                lineStyle: { color: '#ccc', width: 2 }
+            });
+        }
+
+        chart.setOption({
+            tooltip: { trigger: 'item' },
+            series: [{
+                type: 'graph',
+                layout: 'force',
+                force: { repulsion: 150, edgeLength: [80, 200] },
+                roam: true,
+                draggable: true,
+                data: nodes,
+                links: links,
+                lineStyle: { color: '#ccc', curveness: 0 }
+            }]
+        });
+    } catch (err) {
+        showAlert('查询失败: ' + err.message);
+    }
+}
+
+loadFamilyMembers();
+</script>
+{% endblock %}
