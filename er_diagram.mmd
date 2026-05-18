@@ -1,0 +1,53 @@
+
+erDiagram
+    users {
+        int user_id PK
+        varchar username UK "unique, indexed"
+        varchar password_hash
+        varchar email
+        datetime created_at
+    }
+
+    families {
+        int family_id PK
+        int user_id FK "indexed, →users"
+        varchar family_name
+        text description
+        datetime created_at
+    }
+
+    members {
+        int member_id PK
+        int family_id FK "indexed, →families"
+        varchar name "indexed"
+        char gender "indexed, CHECK(M/F)"
+        date birth_date "indexed"
+        date death_date
+        int generation "indexed"
+        text biography
+        int created_by FK "→users"
+        datetime created_at
+    }
+
+    family_relations {
+        int relation_id PK
+        int parent_id FK "indexed, →members"
+        int child_id FK "indexed, →members"
+        varchar relation_type "CHECK(biological/adopted)"
+    }
+
+    marriages {
+        int marriage_id PK
+        int husband_id FK "indexed, →members"
+        int wife_id FK "indexed, →members"
+        date marriage_date
+        date divorce_date
+    }
+
+    users ||--o{ families : owns
+    families ||--o{ members : contains
+    users ||--o{ members : creates
+    members ||--o{ family_relations : "as parent"
+    members ||--o{ family_relations : "as child"
+    members ||--o{ marriages : "as husband"
+    members ||--o{ marriages : "as wife"

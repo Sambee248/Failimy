@@ -1,0 +1,84 @@
+
+@startuml genealogy_er
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam roundCorner 10
+
+entity "users" as users {
+  * user_id : INTEGER <<PK>>
+  --
+  * username : VARCHAR(50) <<UNIQUE, INDEX>>
+  * password_hash : VARCHAR(255)
+  email : VARCHAR(100)
+  created_at : DATETIME
+}
+
+entity "families" as families {
+  * family_id : INTEGER <<PK>>
+  --
+  * user_id : INTEGER <<FK, INDEX>>
+  * family_name : VARCHAR(100)
+  description : TEXT
+  created_at : DATETIME
+}
+
+entity "members" as members {
+  * member_id : INTEGER <<PK>>
+  --
+  * family_id : INTEGER <<FK, INDEX>>
+  * name : VARCHAR(100) <<INDEX>>
+  * gender : CHAR(1) <<INDEX, CHECK(M/F)>>
+  birth_date : DATE <<INDEX>>
+  death_date : DATE
+  * generation : INTEGER <<INDEX>>
+  biography : TEXT
+  created_by : INTEGER <<FK>>
+  created_at : DATETIME
+}
+
+entity "family_relations" as family_relations {
+  * relation_id : INTEGER <<PK>>
+  --
+  * parent_id : INTEGER <<FK, INDEX>>
+  * child_id : INTEGER <<FK, INDEX>>
+  relation_type : VARCHAR(20) <<CHECK(biological/adopted)>>
+  ==
+  UNIQUE(parent_id, child_id)
+  CHECK(parent_id != child_id)
+}
+
+entity "marriages" as marriages {
+  * marriage_id : INTEGER <<PK>>
+  --
+  * husband_id : INTEGER <<FK, INDEX>>
+  * wife_id : INTEGER <<FK, INDEX>>
+  marriage_date : DATE
+  divorce_date : DATE
+  ==
+  CHECK(husband_id != wife_id)
+  CHECK(divorce >= marriage)
+}
+
+users ||--o{ families : "owns"
+families ||--o{ members : "contains"
+members ||--o{ family_relations : "as parent (parent_id)"
+members ||--o{ family_relations : "as child (child_id)"
+members ||--o{ marriages : "as husband"
+members ||--o{ marriages : "as wife"
+users ||--o{ members : "creates"
+
+note right of family_relations
+  Recursive self-referencing
+  via members table
+  Cycle prevention trigger
+  in schema.sql
+end note
+
+note right of members
+  CHECK: death_date >= birth_date
+  CHECK: gender IN ('M','F')
+  Parent birth < child birth
+  validated in app layer
+end note
+
+@enduml

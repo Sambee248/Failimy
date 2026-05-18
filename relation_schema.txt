@@ -1,0 +1,32 @@
+
+Relation Schema (3NF Analysis)
+===============================
+
+Table: users
+  user_id → username, password_hash, email, created_at
+  (All non-key attributes depend on the whole key user_id)
+
+Table: families
+  family_id → user_id, family_name, description, created_at
+  (user_id is FK to users; all attributes depend on family_id)
+
+Table: members
+  member_id → family_id, name, gender, birth_date, death_date,
+              generation, biography, created_by, created_at
+  (family_id FK to families; created_by FK to users)
+  * generation is NOT transitively dependent — it's a direct attribute
+  * No 3NF violations
+
+Table: family_relations
+  relation_id → parent_id, child_id, relation_type
+  (parent_id, child_id both FK to members)
+
+Table: marriages
+  marriage_id → husband_id, wife_id, marriage_date, divorce_date
+  (husband_id, wife_id both FK to members)
+
+All tables satisfy 3NF:
+  - Each table has a single-purpose primary key
+  - No repeating groups (1NF)
+  - No partial dependencies (2NF — all keys are single-column)
+  - No transitive dependencies (3NF — non-key attributes don't depend on other non-key attributes)
